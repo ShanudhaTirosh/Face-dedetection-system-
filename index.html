@@ -3,28 +3,28 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Face Detection System - Debug Version</title>
+    <title>School Face Recognition Attendance System</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <style>
         body {
+            background: linear-gradient(45deg, #1a2980, #26d0ce);
             min-height: 100vh;
-            background: linear-gradient(45deg, #6a11cb, #2575fc);
             padding: 20px;
         }
 
-        .glass-effect {
+        .glass-card {
             background: rgba(255, 255, 255, 0.2);
-            backdrop-filter: blur(8px);
-            border-radius: 10px;
-            border: 1px solid rgba(255, 255, 255, 0.18);
+            backdrop-filter: blur(10px);
+            border-radius: 15px;
             padding: 20px;
             margin-bottom: 20px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
         }
 
         #video-container {
             position: relative;
-            margin: auto;
             width: fit-content;
+            margin: auto;
         }
 
         #face-canvas {
@@ -33,240 +33,513 @@
             left: 0;
         }
 
-        .debug-info {
-            background: rgba(0, 0, 0, 0.7);
-            color: #fff;
+        .attendance-list {
+            max-height: 400px;
+            overflow-y: auto;
+        }
+
+        .student-card {
+            background: rgba(255, 255, 255, 0.1);
+            margin: 10px 0;
             padding: 10px;
-            border-radius: 5px;
-            margin: 10px 0;
-            font-family: monospace;
+            border-radius: 8px;
         }
 
-        .loading-progress {
-            height: 30px;
-            background-color: rgba(255, 255, 255, 0.1);
+        .status-badge {
+            float: right;
+            padding: 5px 10px;
             border-radius: 15px;
-            overflow: hidden;
-            margin: 10px 0;
+            font-size: 0.8em;
         }
 
-        .progress-bar {
-            height: 100%;
-            background-color: #00ff00;
-            width: 0%;
-            transition: width 0.3s ease;
+        .present {
+            background: #28a745;
+            color: white;
+        }
+
+        .absent {
+            background: #dc3545;
+            color: white;
         }
     </style>
 </head>
 <body>
     <div class="container">
-        <!-- Debug Information -->
-        <div class="glass-effect">
-            <h4 class="text-white">System Status</h4>
-            <div id="debugInfo" class="debug-info">
-                Initializing system...
-            </div>
-            <div class="loading-progress">
-                <div id="progressBar" class="progress-bar"></div>
-            </div>
-        </div>
-
-        <!-- Main Content -->
-        <div class="row justify-content-center">
+        <div class="row">
+            <!-- Camera and Recognition Section -->
             <div class="col-lg-8">
-                <div class="glass-effect">
+                <div class="glass-card">
+                    <h3 class="text-white mb-3">Face Recognition Attendance</h3>
                     <div id="video-container">
                         <video id="video" width="640" height="480" autoplay muted></video>
                         <canvas id="face-canvas" width="640" height="480"></canvas>
                     </div>
                     <div class="mt-3">
-                        <button class="btn btn-primary me-2" id="startBtn" disabled>Start Detection</button>
-                        <button class="btn btn-danger me-2" id="stopBtn" disabled>Stop Detection</button>
-                        <button class="btn btn-success" id="captureBtn" disabled>Capture Face</button>
+                        <button class="btn btn-primary me-2" id="startRecognition">Start Recognition</button>
+                        <button class="btn btn-danger me-2" id="stopRecognition">Stop Recognition</button>
+                        <span id="status" class="text-white"></span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Student Registration Section -->
+            <div class="col-lg-4">
+                <div class="glass-card">
+                    <h4 class="text-white">Register New Student</h4>
+                    <form id="studentForm" class="mt-3">
+                        <div class="mb-3">
+                            <input type="text" class="form-control" id="studentId" placeholder="Student ID" required>
+                        </div>
+                        <div class="mb-3">
+                            <input type="text" class="form-control" id="studentName" placeholder="Full Name" required>
+                        </div>
+                        <div class="mb-3">
+                            <select class="form-control" id="studentClass" required>
+                                <option value="">Select Class</option>
+                                <option value="Class A">Class A</option>
+                                <option value="Class B">Class B</option>
+                                <option value="Class C">Class C</option>
+                            </select>
+                        </div>
+                        <button type="button" class="btn btn-success w-100" id="captureStudent">
+                            Capture & Register Face
+                        </button>
+                    </form>
+                </div>
+
+                <!-- Attendance List -->
+                <div class="glass-card">
+                    <h4 class="text-white">Today's Attendance</h4>
+                    <div class="attendance-list" id="attendanceList">
+                        <!-- Attendance entries will be added here dynamically -->
                     </div>
                 </div>
             </div>
         </div>
     </div>
 
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
+    <script src="https://cdn.jsdelivr.net/npm/face-api.js"></script>
+
     <script>
-        // Debug logging function
-        function updateDebug(message, isError = false) {
-            const debugInfo = document.getElementById('debugInfo');
-            const timestamp = new Date().toLocaleTimeString();
-            debugInfo.innerHTML += `<div style="color: ${isError ? '#ff4444' : '#ffffff'}">[${timestamp}] ${message}</div>`;
-            debugInfo.scrollTop = debugInfo.scrollHeight;
-        }
+        // Global variables
+        let isRecognitionActive = false;
+        let recognizer;
+        let labeledDescriptors = [];
+        let students = [];
 
-        // Update progress bar
-        function updateProgress(percent) {
-            document.getElementById('progressBar').style.width = `${percent}%`;
-        }
-
-        // Load face-api.js script dynamically
-        function loadScript(url) {
-            return new Promise((resolve, reject) => {
-                const script = document.createElement('script');
-                script.src = url;
-                script.onload = resolve;
-                script.onerror = () => reject(new Error(`Failed to load script: ${url}`));
-                document.head.appendChild(script);
-            });
-        }
-
-        // Initialize system
-        async function initializeSystem() {
-            try {
-                updateDebug('Loading required libraries...');
-                updateProgress(10);
-
-                // Load TensorFlow.js first
-                await loadScript('https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@3.11.0/dist/tf.min.js');
-                updateDebug('TensorFlow.js loaded successfully');
-                updateProgress(30);
-
-                // Load Face-API.js
-                await loadScript('https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js');
-                updateDebug('Face-API.js loaded successfully');
-                updateProgress(50);
-
-                // Wait for Face-API to be available
-                await new Promise(resolve => setTimeout(resolve, 1000));
-
-                // Load models
-                updateDebug('Loading face detection models...');
-                const MODEL_URL = 'https://raw.githubusercontent.com/justadudewhohacks/face-api.js/master/weights';
-                
-                await Promise.all([
-                    faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL),
-                    faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL)
-                ]);
-
-                updateDebug('Face detection models loaded successfully');
-                updateProgress(80);
-
-                // Initialize camera
-                await initializeCamera();
-                updateProgress(100);
-                
-                // Enable buttons
-                document.getElementById('startBtn').disabled = false;
-                document.getElementById('captureBtn').disabled = false;
-
-                updateDebug('System initialization complete');
-
-            } catch (error) {
-                updateDebug(`Error during initialization: ${error.message}`, true);
-                console.error('Initialization error:', error);
-            }
-        }
-
-        // Initialize camera
-        async function initializeCamera() {
-            try {
-                updateDebug('Accessing camera...');
-                const stream = await navigator.mediaDevices.getUserMedia({
-                    video: {
-                        width: 640,
-                        height: 480,
-                        facingMode: 'user'
-                    }
-                });
-
-                const video = document.getElementById('video');
-                video.srcObject = stream;
-                updateDebug('Camera accessed successfully');
-
-                return new Promise((resolve) => {
-                    video.onloadeddata = () => {
-                        updateDebug('Video stream ready');
-                        resolve();
-                    };
-                });
-            } catch (error) {
-                updateDebug('Camera access failed: ' + error.message, true);
-                throw error;
-            }
-        }
-
-        // Face detection logic
-        let isDetecting = false;
+        // DOM Elements
         const video = document.getElementById('video');
         const canvas = document.getElementById('face-canvas');
         const ctx = canvas.getContext('2d');
+        const startButton = document.getElementById('startRecognition');
+        const stopButton = document.getElementById('stopRecognition');
+        const statusElement = document.getElementById('status');
+        const attendanceList = document.getElementById('attendanceList');
 
-        async function detectFaces() {
-            if (!isDetecting) return;
-
+        // Initialize the system
+        async function init() {
             try {
-                const detections = await faceapi.detectAllFaces(
-                    video,
-                    new faceapi.TinyFaceDetectorOptions()
-                ).withFaceLandmarks();
+                updateStatus('Loading face recognition models...');
+                
+                // Load required face-api.js models
+                await Promise.all([
+                    faceapi.nets.tinyFaceDetector.loadFromUri('https://raw.githubusercontent.com/justadudewhohacks/face-api.js/master/weights'),
+                    faceapi.nets.faceLandmark68Net.loadFromUri('https://raw.githubusercontent.com/justadudewhohacks/face-api.js/master/weights'),
+                    faceapi.nets.faceRecognitionNet.loadFromUri('https://raw.githubusercontent.com/justadudewhohacks/face-api.js/master/weights')
+                ]);
 
-                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                updateStatus('Models loaded successfully');
 
-                detections.forEach(detection => {
-                    // Draw face box
-                    ctx.strokeStyle = '#00ff00';
-                    ctx.lineWidth = 2;
-                    ctx.strokeRect(
-                        detection.detection.box.x,
-                        detection.detection.box.y,
-                        detection.detection.box.width,
-                        detection.detection.box.height
-                    );
+                // Initialize camera
+                const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+                video.srcObject = stream;
 
-                    // Draw landmarks
-                    ctx.fillStyle = '#00ff00';
-                    detection.landmarks.positions.forEach(point => {
-                        ctx.beginPath();
-                        ctx.arc(point.x, point.y, 2, 0, 2 * Math.PI);
-                        ctx.fill();
-                    });
-                });
+                // Enable buttons
+                startButton.disabled = false;
+                stopButton.disabled = true;
 
-                requestAnimationFrame(detectFaces);
+                // Load saved student data
+                loadStudentData();
+
             } catch (error) {
-                updateDebug('Detection error: ' + error.message, true);
-                isDetecting = false;
+                updateStatus('Error initializing: ' + error.message, true);
             }
         }
 
-        // Button event listeners
-        document.getElementById('startBtn').addEventListener('click', () => {
-            isDetecting = true;
-            document.getElementById('stopBtn').disabled = false;
-            document.getElementById('startBtn').disabled = true;
-            detectFaces();
-            updateDebug('Face detection started');
+        // Student registration
+        async function registerStudent(studentId, name, className) {
+            try {
+                const detection = await faceapi.detectSingleFace(video, 
+                    new faceapi.TinyFaceDetectorOptions())
+                    .withFaceLandmarks()
+                    .withFaceDescriptor();
+
+                if (detection) {
+                    const student = {
+                        id: studentId,
+                        name: name,
+                        class: className,
+                        descriptor: Array.from(detection.descriptor),
+                        registerDate: new Date().toISOString()
+                    };
+
+                    students.push(student);
+                    saveStudentData();
+                    updateStatus(`Student ${name} registered successfully!`);
+                    return true;
+                } else {
+                    updateStatus('No face detected. Please try again.', true);
+                    return false;
+                }
+            } catch (error) {
+                updateStatus('Error during registration: ' + error.message, true);
+                return false;
+            }
+        }
+
+        // Face recognition loop
+        async function recognizeFaces() {
+            if (!isRecognitionActive) return;
+
+            try {
+                const detections = await faceapi.detectAllFaces(video, 
+                    new faceapi.TinyFaceDetectorOptions())
+                    .withFaceLandmarks()
+                    .withFaceDescriptors();
+
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+                if (detections.length > 0) {
+                    detections.forEach(detection => {
+                        const match = findBestMatch(detection.descriptor);
+                        
+                        // Draw face box and label
+                        const box = detection.detection.box;
+                        ctx.strokeStyle = '#00ff00';
+                        ctx.lineWidth = 2;
+                        ctx.strokeRect(box.x, box.y, box.width, box.height);
+
+                        // Draw name label
+                        ctx.fillStyle = '#00ff00';
+                        ctx.font = '18px Arial';
+                        ctx.fillText(
+                            match.label,
+                            box.x,
+                            box.y - 5
+                        );
+
+                        // Mark attendance if match is found
+                        if (match.distance < 0.6) { // Threshold for face match
+                            markAttendance(match.label);
+                        }
+                    });
+                }
+
+                requestAnimationFrame(recognizeFaces);
+            } catch (error) {
+                console.error('Recognition error:', error);
+                updateStatus('Recognition error: ' + error.message, true);
+            }
+        }
+
+        // Find best match for face descriptor
+        function findBestMatch(descriptor) {
+            let minDistance = Infinity;
+            let bestMatch = { label: 'Unknown', distance: Infinity };
+
+            students.forEach(student => {
+                const distance = faceapi.euclideanDistance(
+                    descriptor,
+                    new Float32Array(student.descriptor)
+                );
+
+                if (distance < minDistance) {
+                    minDistance = distance;
+                    bestMatch = { label: student.name, distance: distance };
+                }
+            });
+
+            return bestMatch;
+        }
+
+        // Mark attendance
+        function markAttendance(studentName) {
+            const today = new Date().toLocaleDateString();
+            const student = students.find(s => s.name === studentName);
+            
+            if (student && !student.attendanceMarked) {
+                student.attendanceMarked = true;
+                student.lastAttendance = today;
+                
+                // Update attendance list UI
+                updateAttendanceList();
+                saveStudentData();
+            }
+        }
+
+        // Update attendance list UI
+        function updateAttendanceList() {
+            attendanceList.innerHTML = '';
+            const today = new Date().toLocaleDateString();
+
+            students.forEach(student => {
+                const isPresent = student.lastAttendance === today;
+                const entry = document.createElement('div');
+                entry.className = 'student-card';
+                entry.innerHTML = `
+                    <div class="text-white">
+                        ${student.name} - ${student.class}
+                        <span class="status-badge ${isPresent ? 'present' : 'absent'}">
+                            ${isPresent ? 'Present' : 'Absent'}
+                        </span>
+                    </div>
+                `;
+                attendanceList.appendChild(entry);
+            });
+        }
+
+        // Save and load student data
+        function saveStudentData() {
+            localStorage.setItem('students', JSON.stringify(students));
+        }
+
+        function loadStudentData() {
+            const saved = localStorage.getItem('students');
+            if (saved) {
+                students = JSON.parse(saved);
+                updateAttendanceList();
+            }
+        }
+
+        // Event Listeners
+        startButton.addEventListener('click', () => {
+            isRecognitionActive = true;
+            startButton.disabled = true;
+            stopButton.disabled = false;
+            recognizeFaces();
+            updateStatus('Recognition started');
         });
 
-        document.getElementById('stopBtn').addEventListener('click', () => {
-            isDetecting = false;
-            document.getElementById('stopBtn').disabled = true;
-            document.getElementById('startBtn').disabled = false;
+        stopButton.addEventListener('click', () => {
+            isRecognitionActive = false;
+            startButton.disabled = false;
+            stopButton.disabled = true;
             ctx.clearRect(0, 0, canvas.width, canvas.height);
-            updateDebug('Face detection stopped');
+            updateStatus('Recognition stopped');
         });
 
-        document.getElementById('captureBtn').addEventListener('click', () => {
-            const captureCanvas = document.createElement('canvas');
-            captureCanvas.width = video.videoWidth;
-            captureCanvas.height = video.videoHeight;
-            captureCanvas.getContext('2d').drawImage(video, 0, 0);
-            
-            const imageData = captureCanvas.toDataURL('image/png');
-            const downloadLink = document.createElement('a');
-            downloadLink.href = imageData;
-            downloadLink.download = `face_capture_${new Date().toISOString()}.png`;
-            downloadLink.click();
-            
-            updateDebug('Face captured and saved');
+        document.getElementById('captureStudent').addEventListener('click', async () => {
+            const id = document.getElementById('studentId').value;
+            const name = document.getElementById('studentName').value;
+            const className = document.getElementById('studentClass').value;
+
+            if (id && name && className) {
+                if (await registerStudent(id, name, className)) {
+                    if (await registerStudent(id, name, className)) {
+                        // Clear form
+                        document.getElementById('studentForm').reset();
+                        // Update attendance list
+                        updateAttendanceList();
+                        // Show success message
+                        showAlert('Student registered successfully!', 'success');
+                    } else {
+                        showAlert('Registration failed. Please try again.', 'danger');
+                    }
+                }
+            } else {
+                showAlert('Please fill all fields', 'warning');
+            }
         });
 
-        // Start initialization when page loads
-        document.addEventListener('DOMContentLoaded', initializeSystem);
+        // Utility Functions
+        function updateStatus(message, isError = false) {
+            statusElement.textContent = message;
+            statusElement.style.color = isError ? '#ff4444' : '#ffffff';
+        }
+
+        function showAlert(message, type) {
+            const alertDiv = document.createElement('div');
+            alertDiv.className = `alert alert-${type} alert-dismissible fade show`;
+            alertDiv.innerHTML = `
+                ${message}
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            `;
+            document.querySelector('.container').insertBefore(alertDiv, document.querySelector('.row'));
+            setTimeout(() => alertDiv.remove(), 3000);
+        }
+
+        // Attendance Report Functions
+        class AttendanceManager {
+            constructor() {
+                this.attendanceRecords = new Map();
+            }
+
+            markAttendance(studentId, status = 'present') {
+                const now = new Date();
+                const record = {
+                    date: now.toLocaleDateString(),
+                    time: now.toLocaleTimeString(),
+                    status: status,
+                    markedBy: 'ShanudhaTirosh'
+                };
+
+                if (!this.attendanceRecords.has(studentId)) {
+                    this.attendanceRecords.set(studentId, []);
+                }
+                this.attendanceRecords.get(studentId).push(record);
+                this.saveAttendanceRecords();
+            }
+
+            generateDailyReport(date = new Date().toLocaleDateString()) {
+                const report = {
+                    date: date,
+                    present: 0,
+                    absent: 0,
+                    total: students.length,
+                    details: []
+                };
+
+                students.forEach(student => {
+                    const records = this.attendanceRecords.get(student.id) || [];
+                    const todayRecord = records.find(r => r.date === date);
+                    const status = todayRecord ? todayRecord.status : 'absent';
+
+                    report.details.push({
+                        id: student.id,
+                        name: student.name,
+                        class: student.class,
+                        status: status,
+                        time: todayRecord ? todayRecord.time : '-'
+                    });
+
+                    if (status === 'present') report.present++;
+                    else report.absent++;
+                });
+
+                return report;
+            }
+
+            saveAttendanceRecords() {
+                localStorage.setItem('attendanceRecords', 
+                    JSON.stringify(Array.from(this.attendanceRecords.entries())));
+            }
+
+            loadAttendanceRecords() {
+                const saved = localStorage.getItem('attendanceRecords');
+                if (saved) {
+                    this.attendanceRecords = new Map(JSON.parse(saved));
+                }
+            }
+        }
+
+        // Initialize Attendance Manager
+        const attendanceManager = new AttendanceManager();
+
+        // Add Report Generation UI
+        function addReportSection() {
+            const reportSection = document.createElement('div');
+            reportSection.className = 'glass-card mt-4';
+            reportSection.innerHTML = `
+                <h4 class="text-white">Attendance Reports</h4>
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <input type="date" class="form-control" id="reportDate">
+                    </div>
+                    <div class="col-md-6">
+                        <button class="btn btn-info w-100" id="generateReport">
+                            Generate Report
+                        </button>
+                    </div>
+                </div>
+                <div id="reportArea" class="mt-3"></div>
+            `;
+            document.querySelector('.col-lg-4').appendChild(reportSection);
+
+            // Set default date to today
+            document.getElementById('reportDate').valueAsDate = new Date();
+
+            // Add event listener for report generation
+            document.getElementById('generateReport').addEventListener('click', () => {
+                const selectedDate = document.getElementById('reportDate').value;
+                const report = attendanceManager.generateDailyReport(
+                    new Date(selectedDate).toLocaleDateString()
+                );
+                displayReport(report);
+            });
+        }
+
+        function displayReport(report) {
+            const reportArea = document.getElementById('reportArea');
+            reportArea.innerHTML = `
+                <div class="card bg-dark text-white">
+                    <div class="card-body">
+                        <h5 class="card-title">Attendance Report - ${report.date}</h5>
+                        <p>Present: ${report.present} | Absent: ${report.absent} | Total: ${report.total}</p>
+                        <div class="table-responsive">
+                            <table class="table table-dark table-striped">
+                                <thead>
+                                    <tr>
+                                        <th>ID</th>
+                                        <th>Name</th>
+                                        <th>Class</th>
+                                        <th>Status</th>
+                                        <th>Time</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    ${report.details.map(student => `
+                                        <tr>
+                                            <td>${student.id}</td>
+                                            <td>${student.name}</td>
+                                            <td>${student.class}</td>
+                                            <td><span class="badge ${
+                                                student.status === 'present' ? 
+                                                'bg-success' : 'bg-danger'
+                                            }">${student.status}</span></td>
+                                            <td>${student.time}</td>
+                                        </tr>
+                                    `).join('')}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        // Export attendance data
+        function exportAttendanceData() {
+            const data = {
+                students: students,
+                attendance: Array.from(attendanceManager.attendanceRecords.entries()),
+                exportDate: new Date().toISOString(),
+                exportedBy: 'ShanudhaTirosh'
+            };
+
+            const blob = new Blob([JSON.stringify(data, null, 2)], 
+                { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `attendance_export_${new Date().toISOString()}.json`;
+            a.click();
+            URL.revokeObjectURL(url);
+        }
+
+        // Initialize the system
+        document.addEventListener('DOMContentLoaded', () => {
+            init();
+            attendanceManager.loadAttendanceRecords();
+            addReportSection();
+            
+            // Add export button
+            const exportBtn = document.createElement('button');
+            exportBtn.className = 'btn btn-warning mt-3 w-100';
+            exportBtn.textContent = 'Export Attendance Data';
+            exportBtn.onclick = exportAttendanceData;
+            document.querySelector('.col-lg-4').appendChild(exportBtn);
+        });
     </script>
 </body>
 </html>
