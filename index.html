@@ -3,34 +3,41 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Face Register System</title>
+    <title>School Face Registration System</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.0/css/bootstrap.min.css">
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/face-api.js/0.22.2/face-api.min.js"></script>
+    <script defer src="https://cdnjs.cloudflare.com/ajax/libs/face-api.js/0.22.2/face-api.min.js"></script>
     <style>
         body {
-            background: linear-gradient(135deg, #74ebd5, #9face6);
+            background: linear-gradient(135deg, #f5f7fa, #c3cfe2);
             min-height: 100vh;
-            padding: 2rem 0;
+            padding: 1rem 0;
         }
 
         .glass-effect {
-            background: rgba(255, 255, 255, 0.2);
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 15px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
             backdrop-filter: blur(10px);
-            border: 1px solid rgba(255, 255, 255, 0.3);
-            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+            border: 1px solid rgba(255, 255, 255, 0.5);
+            padding: 2rem;
+            margin: 20px auto;
+            max-width: 1000px;
         }
 
         .camera-container {
             position: relative;
             width: 100%;
-            max-width: 800px;
+            max-width: 640px;
             margin: 0 auto;
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
         }
 
         #camera {
             width: 100%;
             height: auto;
-            border-radius: 8px;
+            background-color: #f8f9fa;
         }
 
         #face-canvas {
@@ -41,64 +48,129 @@
             height: 100%;
         }
 
-        .face-item {
-            background: rgba(255, 255, 255, 0.3);
-            border-radius: 8px;
-            padding: 1rem;
-            margin-bottom: 1rem;
-        }
-
         .loading-screen {
             position: fixed;
             top: 0;
             left: 0;
             right: 0;
             bottom: 0;
-            background: rgba(0, 0, 0, 0.8);
+            background: rgba(255, 255, 255, 0.95);
             display: flex;
+            flex-direction: column;
             justify-content: center;
             align-items: center;
-            color: white;
             z-index: 1000;
+        }
+
+        .loading-spinner {
+            width: 50px;
+            height: 50px;
+            border: 5px solid #f3f3f3;
+            border-top: 5px solid #3498db;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-bottom: 1rem;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .loading-progress {
+            margin-top: 1rem;
+            font-size: 1rem;
+            color: #333;
+        }
+
+        .face-item {
+            background: #f8f9fa;
+            border-radius: 8px;
+            padding: 1rem;
+            margin-bottom: 1rem;
+            border: 1px solid #dee2e6;
+            transition: all 0.3s ease;
+        }
+
+        .face-item:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+        }
+
+        .btn {
+            padding: 0.5rem 1.5rem;
+            margin: 5px;
+            border-radius: 6px;
+            font-weight: 500;
+        }
+
+        .status-badge {
+            padding: 0.25rem 0.75rem;
+            border-radius: 20px;
+            font-size: 0.875rem;
+            font-weight: 500;
         }
     </style>
 </head>
 <body>
     <div id="loading" class="loading-screen">
-        <h3>Loading Face Detection Models...</h3>
+        <div class="loading-spinner"></div>
+        <h3 class="mb-3">Loading Face Detection System</h3>
+        <div id="loading-progress" class="loading-progress">Initializing...</div>
+        <button id="retry-loading" class="btn btn-primary mt-3" style="display: none;">Retry Loading</button>
     </div>
 
     <div class="container">
-        <div class="glass-effect p-4 rounded">
-            <h2 class="text-center mb-4">Face Register System</h2>
+        <div class="glass-effect">
+            <h2 class="text-center mb-4">School Face Registration System</h2>
             
-            <div class="camera-container mb-3">
+            <div class="camera-container mb-4">
                 <video id="camera" autoplay playsinline></video>
                 <canvas id="face-canvas"></canvas>
             </div>
 
-            <div class="row mb-3">
-                <div class="col-md-6">
-                    <input type="text" id="face-name" class="form-control mb-2" placeholder="Enter name">
+            <div class="row mb-4">
+                <div class="col-md-4">
+                    <input type="text" id="face-name" class="form-control" placeholder="Student/Staff Name">
                 </div>
-                <div class="col-md-6">
-                    <input type="text" id="face-id" class="form-control mb-2" placeholder="Enter ID">
+                <div class="col-md-4">
+                    <input type="text" id="face-id" class="form-control" placeholder="ID Number">
+                </div>
+                <div class="col-md-4">
+                    <select id="face-type" class="form-control">
+                        <option value="student">Student</option>
+                        <option value="teacher">Teacher</option>
+                        <option value="staff">Staff</option>
+                    </select>
                 </div>
             </div>
 
-            <div class="d-flex justify-content-center mb-3 flex-wrap gap-2">
-                <button id="start-detection" class="btn btn-primary">Start Detection</button>
-                <button id="add-face" class="btn btn-success" disabled>Add Face</button>
-                <button id="export-data" class="btn btn-warning">Export Data</button>
-                <button id="clear-data" class="btn btn-danger">Clear All Data</button>
+            <div class="d-flex justify-content-center mb-4 flex-wrap">
+                <button id="start-detection" class="btn btn-primary" disabled>
+                    <i class="fas fa-camera"></i> Start Detection
+                </button>
+                <button id="add-face" class="btn btn-success" disabled>
+                    <i class="fas fa-plus"></i> Register Face
+                </button>
+                <button id="export-data" class="btn btn-warning">
+                    <i class="fas fa-file-export"></i> Export Data
+                </button>
+                <button id="clear-data" class="btn btn-danger">
+                    <i class="fas fa-trash"></i> Clear All
+                </button>
             </div>
 
-            <div id="face-list" class="mt-3"></div>
+            <div id="status-message" class="alert" style="display: none;"></div>
+            <div id="face-list" class="mt-4"></div>
         </div>
     </div>
 
     <script>
-        // Initialize variables
+        let db;
+        let detectedFace = null;
+        let detectionInterval;
+        let isModelLoaded = false;
+
         const video = document.getElementById('camera');
         const canvas = document.getElementById('face-canvas');
         const faceList = document.getElementById('face-list');
@@ -106,83 +178,91 @@
         const addFace = document.getElementById('add-face');
         const exportData = document.getElementById('export-data');
         const clearData = document.getElementById('clear-data');
-        const faceNameInput = document.getElementById('face-name');
-        const faceIdInput = document.getElementById('face-id');
         const loadingScreen = document.getElementById('loading');
-
-        let db;
-        let detectedFace = null;
-        let detectionInterval;
+        const loadingProgress = document.getElementById('loading-progress');
+        const retryButton = document.getElementById('retry-loading');
+        const statusMessage = document.getElementById('status-message');
 
         // Initialize IndexedDB
-        const initDB = () => {
-            const request = indexedDB.open('FaceDatabase', 1);
-            
+        function initDB() {
+            const request = indexedDB.open('FaceRegistrationDB', 1);
+
+            request.onerror = (event) => {
+                showStatus('Database error: ' + event.target.error, 'error');
+            };
+
             request.onupgradeneeded = (event) => {
                 db = event.target.result;
-                const store = db.createObjectStore('faces', { keyPath: 'id', autoIncrement: true });
-                store.createIndex('faceId', 'faceId', { unique: true });
+                if (!db.objectStoreNames.contains('faces')) {
+                    const store = db.createObjectStore('faces', { keyPath: 'id' });
+                    store.createIndex('name', 'name', { unique: false });
+                    store.createIndex('type', 'type', { unique: false });
+                }
             };
 
             request.onsuccess = (event) => {
                 db = event.target.result;
                 updateFaceList();
             };
+        }
 
-            request.onerror = (event) => {
-                console.error("IndexedDB error:", event.target.error);
-                alert("Database error: " + event.target.error);
-            };
-        };
-
-        // Load face-api.js models
-        const loadModels = async () => {
+        // Load models with proper error handling
+        async function loadModels() {
             try {
-                await faceapi.nets.tinyFaceDetector.loadFromUri('https://justadudewhohacks.github.io/face-api.js/models');
-                await faceapi.nets.faceLandmark68Net.loadFromUri('https://justadudewhohacks.github.io/face-api.js/models');
-                await faceapi.nets.faceRecognitionNet.loadFromUri('https://justadudewhohacks.github.io/face-api.js/models');
+                const MODEL_URL = 'https://cdn.jsdelivr.net/npm/@vladmandic/face-api/model/';
+                
+                loadingProgress.textContent = 'Loading face detection models...';
+                await faceapi.nets.tinyFaceDetector.load(MODEL_URL);
+                loadingProgress.textContent = '25% - Face detector loaded';
+                
+                await faceapi.nets.faceLandmark68Net.load(MODEL_URL);
+                loadingProgress.textContent = '50% - Facial landmarks loaded';
+                
+                await faceapi.nets.faceRecognitionNet.load(MODEL_URL);
+                loadingProgress.textContent = '75% - Face recognition loaded';
+                
+                await faceapi.nets.ssdMobilenetv1.load(MODEL_URL);
+                loadingProgress.textContent = '100% - All models loaded successfully';
+
+                isModelLoaded = true;
                 loadingScreen.style.display = 'none';
-                initCamera();
+                startDetection.disabled = false;
+                
+                await initCamera();
             } catch (error) {
-                console.error('Error loading models:', error);
-                alert('Error loading face detection models. Please refresh the page.');
+                console.error('Model loading error:', error);
+                showStatus('Error loading models. Please check your internet connection.', 'error');
+                retryButton.style.display = 'block';
             }
-        };
+        }
 
-        // Initialize camera
-        const initCamera = async () => {
+        // Initialize camera with error handling
+        async function initCamera() {
             try {
-                const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+                const stream = await navigator.mediaDevices.getUserMedia({
+                    video: {
+                        facingMode: 'user',
+                        width: { ideal: 640 },
+                        height: { ideal: 480 }
+                    }
+                });
                 video.srcObject = stream;
-                // Set canvas size after video loads
+                
                 video.addEventListener('loadedmetadata', () => {
                     canvas.width = video.videoWidth;
                     canvas.height = video.videoHeight;
                 });
+
+                showStatus('Camera initialized successfully', 'success');
             } catch (error) {
                 console.error('Camera error:', error);
-                alert('Unable to access camera. Please ensure camera permissions are granted.');
+                showStatus('Camera access denied. Please check permissions.', 'error');
             }
-        };
+        }
 
-        // Start face detection
-        startDetection.addEventListener('click', async () => {
-            if (!faceNameInput.value || !faceIdInput.value) {
-                alert('Please enter both name and ID');
-                return;
-            }
-
-            if (detectionInterval) {
-                clearInterval(detectionInterval);
-                startDetection.textContent = 'Start Detection';
-                addFace.disabled = true;
-                detectedFace = null;
-                return;
-            }
-
-            startDetection.textContent = 'Stop Detection';
-            
-            detectionInterval = setInterval(async () => {
+        // Face detection function
+        async function detectFace() {
+            if (video.readyState === 4) {
                 const detections = await faceapi.detectAllFaces(
                     video,
                     new faceapi.TinyFaceDetectorOptions()
@@ -198,121 +278,280 @@
                     // Draw detection box
                     ctx.beginPath();
                     ctx.lineWidth = "3";
-                    ctx.strokeStyle = "green";
+                    ctx.strokeStyle = "#00ff00";
                     const box = detections[0].detection.box;
                     ctx.rect(box.x, box.y, box.width, box.height);
                     ctx.stroke();
+
+                    // Draw landmarks
+                    const landmarks = detections[0].landmarks;
+                    ctx.fillStyle = '#ff0000';
+                    for (let point of landmarks.positions) {
+                        ctx.beginPath();
+                        ctx.arc(point.x, point.y, 2, 0, 2 * Math.PI);
+                        ctx.fill();
+                    }
                 } else {
                     detectedFace = null;
                     addFace.disabled = true;
                 }
-            }, 100);
-        });
+            }
+        }
 
-        // Add detected face to database
-        addFace.addEventListener('click', async () => {
-            if (!detectedFace || !faceNameInput.value || !faceIdInput.value) {
-                alert('Please ensure face is detected and all fields are filled');
+        // Helper function to show status messages
+        function showStatus(message, type) {
+            statusMessage.textContent = message;
+            statusMessage.className = `alert alert-${type === 'error' ? 'danger' : 'success'}`;
+            statusMessage.style.display = 'block';
+            setTimeout(() => {
+                statusMessage.style.display = 'none';
+            }, 3000);
+        }
+
+        // Event Listeners
+        startDetection.addEventListener('click', () => {
+            if (!isModelLoaded) {
+                showStatus('Please wait for models to load completely', 'error');
                 return;
             }
 
-            const faceData = {
-                faceId: faceIdInput.value,
-                name: faceNameInput.value,
-                descriptor: Array.from(detectedFace.descriptor),
-                timestamp: new Date().toISOString()
-            };
+            if (detectionInterval) {
+                clearInterval(detectionInterval);
+                startDetection.textContent = 'Start Detection';
+                addFace.disabled = true;
+                detectedFace = null;
+                const ctx = canvas.getContext('2d');
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                return;
+            }
+
+            startDetection.textContent = 'Stop Detection';
+            detectionInterval = setInterval(detectFace, 100);
+        });
+
+        addFace.addEventListener('click', async () => {
+            const name = document.getElementById('face-name').value.trim();
+            const id = document.getElementById('face-id').value.trim();
+            const type = document.getElementById('face-type').value;
+
+            if (!name || !id) {
+                showStatus('Please enter both name and ID', 'error');
+                return;
+            }
+
+            if (!detectedFace) {
+                showStatus('No face detected', 'error');
+                return;
+            }
 
             const transaction = db.transaction(['faces'], 'readwrite');
             const store = transaction.objectStore('faces');
 
-            try {
-                await store.add(faceData);
-                alert('Face registered successfully!');
-                faceNameInput.value = '';
-                faceIdInput.value = '';
+            const faceData = {
+                id,
+                name,
+                type,
+                descriptor: Array.from(detectedFace.descriptor),
+                timestamp: new Date().toISOString()
+            };
+
+            store.add(faceData).onsuccess = () => {
+                showStatus('Face registered successfully', 'success');
                 updateFaceList();
-            } catch (error) {
-                alert('Error adding face. ID might be duplicate.');
-            }
+            };
         });
 
-        // Update face list in UI
-        const updateFaceList = () => {
+        // Update face list function
+        function updateFaceList() {
             const transaction = db.transaction(['faces'], 'readonly');
             const store = transaction.objectStore('faces');
             const request = store.getAll();
 
-            request.onsuccess = (event) => {
-                const faces = event.target.result;
+            request.onsuccess = () => {
+                const faces = request.result;
                 faceList.innerHTML = faces.map(face => `
                     <div class="face-item">
                         <div class="d-flex justify-content-between align-items-center">
                             <div>
-                                <strong>ID:</strong> ${face.faceId}<br>
-                                <strong>Name:</strong> ${face.name}<br>
-                                <strong>Registered:</strong> ${new Date(face.timestamp).toLocaleString()}
+                                <h5>${face.name}</h5>
+                                <p class="mb-0">ID: ${face.id}</p>
+                                <span class="status-badge badge bg-${face.type === 'student' ? 'primary' : face.type === 'teacher' ? 'success' : 'info'}">
+                                    ${face.type.charAt(0).toUpperCase() + face.type.slice(1)}
+                                </span>
                             </div>
-                            <button class="btn btn-danger btn-sm" onclick="deleteFace('${face.faceId}')">
+                            <button class="btn btn-danger btn-sm" onclick="deleteFace('${face.id}')">
                                 Delete
                             </button>
                         </div>
                     </div>
                 `).join('');
             };
-        };
+        }
 
-        // Delete face from database
-        window.deleteFace = (faceId) => {
-            if (confirm('Are you sure you want to delete this face?')) {
+        // Delete face function
+        function deleteFace(id) {
+            if (confirm('Are you sure you want to delete this registration?')) {
                 const transaction = db.transaction(['faces'], 'readwrite');
                 const store = transaction.objectStore('faces');
-                const index = store.index('faceId');
-                
-                const request = index.getKey(faceId);
-                request.onsuccess = (event) => {
-                    const key = event.target.result;
-                    store.delete(key);
+                store.delete(id).onsuccess = () => {
+                    showStatus('Registration deleted successfully', 'success');
                     updateFaceList();
                 };
             }
-        };
+        }
 
-        // Export data to CSV
+        // Export data function
         exportData.addEventListener('click', () => {
             const transaction = db.transaction(['faces'], 'readonly');
             const store = transaction.objectStore('faces');
             const request = store.getAll();
 
-            request.onsuccess = (event) => {
-                const faces = event.target.result;
-                const csvContent = "data:text/csv;charset=utf-8," + 
-                    "ID,Name,Registration Date\n" +
-                    faces.map(face => `${face.faceId},${face.name},${face.timestamp}`).join("\n");
-
-                const encodedUri = encodeURI(csvContent);
-                const link = document.createElement("a");
-                link.setAttribute("href", encodedUri);
-                link.setAttribute("download", "face_register_data.csv");
-                document.body.appendChild(link);
-                link.click();
-                document.body.removeChild(link);
+            request.onsuccess = () => {
+                const faces = request.result;
+                const dataStr = JSON.stringify(faces, null, 2);
+                const blob = new</antArtifact>const blob = new Blob([dataStr], { type: 'application/json' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                const timestamp = new Date().toISOString().split('T')[0];
+                a.href = url;
+                a.download = `face-registration-data-${timestamp}.json`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+                showStatus('Data exported successfully', 'success');
             };
         });
 
-        // Clear all data
+        // Clear all data function
         clearData.addEventListener('click', () => {
-            if (confirm('Are you sure you want to clear all face data? This cannot be undone.')) {
+            if (confirm('Are you sure you want to clear all registration data? This action cannot be undone.')) {
                 const transaction = db.transaction(['faces'], 'readwrite');
                 const store = transaction.objectStore('faces');
-                store.clear();
-                updateFaceList();
+                store.clear().onsuccess = () => {
+                    showStatus('All data cleared successfully', 'success');
+                    updateFaceList();
+                };
             }
         });
 
-        // Initialize application
-        loadModels();
-        initDB();
+        // Retry button functionality
+        retryButton.addEventListener('click', async () => {
+            retryButton.style.display = 'none';
+            loadingProgress.textContent = 'Retrying...';
+            loadingProgress.style.color = '#333';
+            try {
+                await loadModels();
+                showStatus('Models loaded successfully', 'success');
+            } catch (error) {
+                showStatus('Failed to load models. Please refresh the page.', 'error');
+                retryButton.style.display = 'block';
+            }
+        });
+
+        // Error handling for video stream
+        video.addEventListener('error', () => {
+            showStatus('Error accessing camera stream', 'error');
+        });
+
+        // Handle visibility change to manage resources
+        document.addEventListener('visibilitychange', () => {
+            if (document.hidden && detectionInterval) {
+                clearInterval(detectionInterval);
+                startDetection.textContent = 'Start Detection';
+                addFace.disabled = true;
+            }
+        });
+
+        // Initialize the application
+        window.addEventListener('load', async () => {
+            initDB();
+            try {
+                await loadModels();
+            } catch (error) {
+                console.error('Initial loading error:', error);
+                showStatus('Failed to initialize. Please try again.', 'error');
+                retryButton.style.display = 'block';
+            }
+        });
+
+        // Add keyboard shortcuts
+        document.addEventListener('keydown', (e) => {
+            if (e.ctrlKey || e.metaKey) {
+                switch (e.key) {
+                    case 's':
+                        e.preventDefault();
+                        if (!addFace.disabled) {
+                            addFace.click();
+                        }
+                        break;
+                    case 'd':
+                        e.preventDefault();
+                        startDetection.click();
+                        break;
+                }
+            }
+        });
+
+        // Helper function to validate inputs
+        function validateInputs() {
+            const name = document.getElementById('face-name').value.trim();
+            const id = document.getElementById('face-id').value.trim();
+            
+            if (!name || !id) {
+                showStatus('Please fill in all required fields', 'error');
+                return false;
+            }
+            
+            if (!/^[a-zA-Z\s]+$/.test(name)) {
+                showStatus('Name should only contain letters and spaces', 'error');
+                return false;
+            }
+            
+            if (!/^[a-zA-Z0-9]+$/.test(id)) {
+                showStatus('ID should only contain letters and numbers', 'error');
+                return false;
+            }
+            
+            return true;
+        }
+
+        // Handle offline/online status
+        window.addEventListener('online', () => {
+            showStatus('Connection restored', 'success');
+        });
+
+        window.addEventListener('offline', () => {
+            showStatus('No internet connection', 'error');
+        });
+
+        // Performance optimization for face detection
+        function debounce(func, wait) {
+            let timeout;
+            return function executedFunction(...args) {
+                const later = () => {
+                    clearTimeout(timeout);
+                    func(...args);
+                };
+                clearTimeout(timeout);
+                timeout = setTimeout(later, wait);
+            };
+        }
+
+        const debouncedDetectFace = debounce(detectFace, 100);
+
+        // Cleanup function for resources
+        function cleanup() {
+            if (detectionInterval) {
+                clearInterval(detectionInterval);
+            }
+            if (video.srcObject) {
+                video.srcObject.getTracks().forEach(track => track.stop());
+            }
+        }
+
+        // Handle page unload
+        window.addEventListener('beforeunload', cleanup);
     </script>
 </body>
 </html>
